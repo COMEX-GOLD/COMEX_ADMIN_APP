@@ -755,10 +755,11 @@ flex-shrink:0;
           </div>
           <div id="chatMsgPane" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px;display:flex;flex-direction:column;gap:4px;"></div>
           <div style="padding:10px 12px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0;">
-            <input id="adminChatInp" type="text" placeholder="Type a reply..."
-              onkeydown="if(event.key==='Enter'&&!event.isComposing){event.preventDefault();sendAdminReply();}"
-              style="flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:9px 12px;font-size:13px;color:var(--text);font-family:'Syne',sans-serif;outline:none;">
-            <button type="button" onclick="sendAdminReply()" style="padding:9px 16px;background:linear-gradient(135deg,#c9982e,var(--gold2));border:none;border-radius:10px;color:#000;font-size:13px;font-weight:700;cursor:pointer;">Send</button>
+            <textarea id="adminChatInp" rows="1" placeholder="Type a reply... (Shift+Enter = new line)"
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendAdminReply();}"
+              oninput="autoGrowChatInput(this)" onpaste="setTimeout(()=>autoGrowChatInput(this),0)"
+              style="flex:1;resize:none;max-height:120px;overflow-y:auto;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:9px 12px;font-size:13px;color:var(--text);font-family:'Syne',sans-serif;outline:none;line-height:1.45;white-space:pre-wrap;"></textarea>
+            <button type="button" onclick="sendAdminReply()" style="padding:9px 16px;align-self:flex-end;background:linear-gradient(135deg,#c9982e,var(--gold2));border:none;border-radius:10px;color:#000;font-size:13px;font-weight:700;cursor:pointer;">Send</button>
           </div>
         </div>
       </div>
@@ -1483,7 +1484,7 @@ async function processDeposit(action){
   try{
     const batch=db.batch();
     batch.update(db.collection('deposits').doc(activeDepId),{status:action,adminNote:note,approvedAmount,processedAt:firebase.firestore.FieldValue.serverTimestamp(),processedBy:auth.currentUser?.email});
-    if(action==='confirmed'&&d.userId)batch.update(db.collection('users').doc(d.userId),{'balance.usd':firebase.firestore.FieldValue.increment(approvedAmount),lastDepositAt:firebase.firestore.FieldValue.serverTimestamp()});
+    if(action==='confirmed'&&d.userId)batch.update(db.collection('users').doc(d.userId),{'balance.usd':firebase.firestore.FieldValue.increment(approvedAmount),totalDeposited:firebase.firestore.FieldValue.increment(approvedAmount),lastDepositAt:firebase.firestore.FieldValue.serverTimestamp()});
     await batch.commit();
     closeModal('depositModal');
     toast(action==='confirmed'?`Deposit confirmed! $${approvedAmount.toLocaleString()} credited ✅`:'Deposit rejected','ok');
@@ -1762,16 +1763,21 @@ function openChatThread(userId){
         msgContent=esc(msg.text||'');
       }
       const pad=isPhoto?'6px':'10px 14px';
-      div.innerHTML=`<div style="max-width:72%;padding:${pad};border-radius:${isAdmin?'14px 4px 14px 14px':'4px 14px 14px 14px'};background:${isAdmin?'rgba(212,175,55,.2)':'rgba(255,255,255,.07)'};font-size:12.5px;color:var(--text);line-height:1.5">${msgContent}<div style="font-size:9.5px;color:var(--sub);margin-top:4px;text-align:${isAdmin?'right':'left'}">${isAdmin?'Admin':'User'}</div></div>`;
+      div.innerHTML=`<div style="max-width:72%;padding:${pad};border-radius:${isAdmin?'14px 4px 14px 14px':'4px 14px 14px 14px'};background:${isAdmin?'rgba(212,175,55,.2)':'rgba(255,255,255,.07)'};font-size:12.5px;color:var(--text);line-height:1.5;white-space:${isPhoto?'normal':'pre-wrap'};word-break:break-word;overflow-wrap:break-word">${msgContent}<div style="font-size:9.5px;color:var(--sub);margin-top:4px;text-align:${isAdmin?'right':'left'}">${isAdmin?'Admin':'User'}</div></div>`;
       msgPane.appendChild(div);
     });
     msgPane.scrollTop=msgPane.scrollHeight;
   },e=>console.warn(e));
   db.collection('chats').doc(userId).update({unreadAdmin:0}).catch(()=>{});
 }
+function autoGrowChatInput(el){
+  el.style.height='auto';
+  el.style.height=Math.min(el.scrollHeight,120)+'px';
+}
 async function sendAdminReply(){
   if(!activeChatUserId)return;
-  const inp=document.getElementById('adminChatInp');const txt=inp.value.trim();if(!txt)return;inp.value='';
+  const inp=document.getElementById('adminChatInp');const txt=inp.value.trim();if(!txt)return;
+  inp.value='';inp.style.height='auto';
   try{
     const user=allUsers.find(x=>x.uid===activeChatUserId) || {};
     await db.collection('chats').doc(activeChatUserId).collection('messages').add({text:txt,sender:'admin',timestamp:firebase.firestore.FieldValue.serverTimestamp()});
